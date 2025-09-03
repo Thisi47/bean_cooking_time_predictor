@@ -15,6 +15,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
+import kotlin.time.measureTime
 
 class MainViewModel : ViewModel() {
 
@@ -47,10 +48,15 @@ class MainViewModel : ViewModel() {
 
         viewModelScope.launch(Dispatchers.Default) {
             try {
-                val result = runModelInference(context, bitmap)
+                var result:Float = 0f
+                val latence = measureTime {
+                    result = runModelInference(context, bitmap)
+                }
+
+                print("La latence pour ce modèle est de ${latence.inWholeMilliseconds} ms")
                 withContext(Dispatchers.Main) {
                     predictionResult.value =
-                        "Temps de cuisson estimé : ${result.toInt()} minutes"
+                        "Temps de cuisson estimé : ${result.toInt()} minutes\nLe temps d'inférence pour ce modèle est de ${latence.inWholeMilliseconds} ms"
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
