@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.tinyml.beancookingtimepredictor"
-        minSdk = 29
+        minSdk = 26
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -62,7 +62,7 @@ dependencies {
 
     // ViewModel et LiveData pour la gestion de l'état
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
-
+    implementation("androidx.navigation:navigation-compose:2.8.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
