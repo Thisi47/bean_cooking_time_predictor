@@ -53,10 +53,10 @@ class MainViewModel : ViewModel() {
                     result = runModelInference(context, bitmap)
                 }
 
-                print("La latence pour ce modèle est de ${latence.inWholeMilliseconds} ms")
+                println("La latence pour ce modèle est de ${latence.inWholeMilliseconds} ms")
                 withContext(Dispatchers.Main) {
                     predictionResult.value =
-                        "Temps de cuisson estimé : ${result.toInt()} minutes\nLe temps d'inférence pour ce modèle est de ${latence.inWholeMilliseconds} ms"
+                        "Temps de cuisson estimé : ${result.toInt()} minutes"
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
