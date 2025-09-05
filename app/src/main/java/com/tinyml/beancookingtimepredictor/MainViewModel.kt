@@ -19,17 +19,23 @@ import kotlin.time.measureTime
 
 class MainViewModel : ViewModel() {
 
-    // État de l'interface utilisateur
+    // État UI
     val imageBitmap = mutableStateOf<Bitmap?>(null)
     val predictionResult = mutableStateOf<String?>(null)
 
-    // Constantes pour le modèle
+    // Constantes
     private val imageSizeX = 224
     private val imageSizeY = 224
     private val minCookingTime = 51f
     private val maxCookingTime = 410f
 
-    // Charge le modèle TensorFlow Lite depuis les assets
+    // Classes de haricots
+    private val beanClasses = listOf(
+        "Dor701", "Escapan021", "GPL190C", "GPL190S",
+        "Macc55", "NIT4G16187", "Senegalais", "TY339612", "autre"
+    )
+
+    // Chargement modèle
     private fun loadModelFile(context: Context, modelPath: String): MappedByteBuffer {
         val fileDescriptor = context.assets.openFd(modelPath)
         val inputStream = FileInputStream(fileDescriptor.fileDescriptor)
@@ -40,24 +46,39 @@ class MainViewModel : ViewModel() {
     }
 
     /**
-     * Lance la prédiction dans une coroutine pour ne pas bloquer l'UI
+     * Lancer pipeline : classification -> régression
      */
     fun runPrediction(context: Context, bitmap: Bitmap) {
         imageBitmap.value = bitmap
-        predictionResult.value = "Calcul en cours..."
+        predictionResult.value = "Analyse en cours..."
 
         viewModelScope.launch(Dispatchers.Default) {
             try {
-                var result:Float = 0f
-                val latence = measureTime {
-                    result = runModelInference(context, bitmap)
+                val argbBitmap = if (bitmap.config != Bitmap.Config.ARGB_8888) {
+                    bitmap.copy(Bitmap.Config.ARGB_8888, true)
+                } else bitmap
+
+                // Étape 1 : Classification
+                val (predictedClass, _) = runClassification(context, argbBitmap)
+
+                withContext(Dispatchers.Main) {
+                    if (predictedClass == "autre") {
+                        predictionResult.value =
+                            "L’image fournie n’est pas reconnue comme un haricot.\n" +
+                                    "L’application ne prédit que le temps de cuisson des haricots."
+                    } else {
+                        // Étape 2 : Régression
+                        var result: Float = 0f
+                        val latence = measureTime {
+                            result = runRegression(context, argbBitmap)
+                        }
+                        predictionResult.value =
+                            "Variété détectée : $predictedClass\n" +
+                                    "Temps de cuisson estimé : ${result.toInt()} minutes\n" +
+                                    "(Latence : ${latence.inWholeMilliseconds} ms)"
+                    }
                 }
 
-                println("La latence pour ce modèle est de ${latence.inWholeMilliseconds} ms")
-                withContext(Dispatchers.Main) {
-                    predictionResult.value =
-                        "Temps de cuisson estimé : ${result.toInt()} minutes"
-                }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     predictionResult.value = "Erreur lors de la prédiction."
@@ -68,62 +89,90 @@ class MainViewModel : ViewModel() {
     }
 
     /**
-     * Inférence du modèle TFLite float32
+     * Classification int8
      */
-    private fun runModelInference(context: Context, bitmap: Bitmap): Float {
-        // 1. Assurer ARGB_8888
-        val argbBitmap = if (bitmap.config != Bitmap.Config.ARGB_8888) {
-            bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        } else {
-            bitmap
-        }
+    /**
+     * Classification int8 (entrée UINT8, sortie UINT8)
+     */
+    private fun runClassification(context: Context, bitmap: Bitmap): Pair<String, Int> {
+        val resizedBitmap = Bitmap.createScaledBitmap(bitmap, imageSizeX, imageSizeY, true)
 
-        // 2. Redimensionner à 224x224
-        val resizedBitmap = Bitmap.createScaledBitmap(argbBitmap, imageSizeX, imageSizeY, true)
-
-        // 3. Créer le ByteBuffer pour le modèle float32
-        val inputBuffer = ByteBuffer.allocateDirect(4 * imageSizeX * imageSizeY * 3)
+        // Entrée UINT8
+        val inputBuffer = ByteBuffer.allocateDirect(imageSizeX * imageSizeY * 3)
         inputBuffer.order(ByteOrder.nativeOrder())
 
-        // 4. Remplir le buffer avec les pixels normalisés [0,1]
+        for (y in 0 until imageSizeY) {
+            for (x in 0 until imageSizeX) {
+                val pixel = resizedBitmap.getPixel(x, y)
+                val r = (pixel shr 16 and 0xFF).toByte()
+                val g = (pixel shr 8 and 0xFF).toByte()
+                val b = (pixel and 0xFF).toByte()
+                inputBuffer.put(r)
+                inputBuffer.put(g)
+                inputBuffer.put(b)
+            }
+        }
+        inputBuffer.rewind()
+
+        // Modèle quantifié int8
+        val interpreter = Interpreter(loadModelFile(context, "bean_classifier.tflite"))
+
+        // Sortie UINT8 (quantifiée)
+        val outputBuffer = ByteBuffer.allocateDirect(beanClasses.size)
+        outputBuffer.order(ByteOrder.nativeOrder())
+        interpreter.run(inputBuffer, outputBuffer)
+        interpreter.close()
+
+        // Convertir la sortie en int [0–255]
+        outputBuffer.rewind()
+        val scores = IntArray(beanClasses.size)
+        for (i in scores.indices) {
+            scores[i] = outputBuffer.get().toInt() and 0xFF
+        }
+
+        // Trouver l’index avec le score max
+        val maxIdx = scores.indices.maxByOrNull { scores[it] } ?: -1
+        return Pair(beanClasses[maxIdx], maxIdx)
+    }
+
+
+    /**
+     * Régression float32
+     */
+    private fun runRegression(context: Context, bitmap: Bitmap): Float {
+        val resizedBitmap = Bitmap.createScaledBitmap(bitmap, imageSizeX, imageSizeY, true)
+
+        // Entrée float32 [0.0 - 1.0]
+        val inputImage = Array(1) { Array(imageSizeY) { Array(imageSizeX) { FloatArray(3) } } }
+
         for (y in 0 until imageSizeY) {
             for (x in 0 until imageSizeX) {
                 val pixel = resizedBitmap.getPixel(x, y)
                 val r = ((pixel shr 16) and 0xFF) / 255.0f
                 val g = ((pixel shr 8) and 0xFF) / 255.0f
                 val b = (pixel and 0xFF) / 255.0f
-                inputBuffer.putFloat(r)
-                inputBuffer.putFloat(g)
-                inputBuffer.putFloat(b)
+                inputImage[0][y][x][0] = r
+                inputImage[0][y][x][1] = g
+                inputImage[0][y][x][2] = b
             }
         }
-        inputBuffer.rewind()
 
-        // 5. Charger l'interpréteur
-        val interpreter = Interpreter(loadModelFile(context, "model.tflite"))
+        // Chargement du modèle float16
+        val interpreter = Interpreter(loadModelFile(context, "bean_regressor.tflite"))
 
-        // 6. Préparer le buffer de sortie
-        val outputBuffer = ByteBuffer.allocateDirect(4) // 1 float32
-        outputBuffer.order(ByteOrder.nativeOrder())
-        outputBuffer.rewind()
-
-        // 7. Exécuter l'inférence
-        interpreter.run(inputBuffer, outputBuffer)
-        outputBuffer.rewind()
-        val prediction = outputBuffer.float
-
+        // Sortie float32 (même si le modèle est float16, TFLite reconvertit en float32)
+        val output = Array(1) { FloatArray(1) }
+        interpreter.run(inputImage, output)
         interpreter.close()
 
-        // 8. Dénormaliser la prédiction
-        return denormalize(prediction)
+        return denormalize(output[0][0])
     }
-
-    // Dénormalise la prédiction de [0,1] vers le temps réel
+    // Dénormalisation
     private fun denormalize(normalizedValue: Float): Float {
         return normalizedValue * (maxCookingTime - minCookingTime) + minCookingTime
     }
 
-    // Réinitialise l'état
+    // Réinitialiser
     fun reset() {
         imageBitmap.value = null
         predictionResult.value = null

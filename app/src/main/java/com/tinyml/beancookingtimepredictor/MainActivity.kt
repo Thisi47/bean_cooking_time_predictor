@@ -1,6 +1,5 @@
 package com.tinyml.beancookingtimepredictor
 
-
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -38,7 +37,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.tinyml.beancookingtimepredictor.ui.theme.PredicteurTempsCuissonTheme
-
 
 val RMSE = 26
 val MAE = 16.40
@@ -100,7 +98,6 @@ fun IntroScreen(onDismiss: (Boolean) -> Unit) {
         }
     )
 }
-
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -180,14 +177,6 @@ fun PredictionScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-//            // --- Titre principal ---
-//            Text(
-//                text = "Prédicteur du Temps de Cuisson",
-//                style = MaterialTheme.typography.headlineMedium,
-//                fontWeight = FontWeight.Bold
-//            )
-
-            // --- Zone d'image ---
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -210,18 +199,24 @@ fun PredictionScreen(
                 }
             }
 
-            // --- Résultat prédiction ---
             if (predictionResult != null) {
                 Text(
                     text = predictionResult!!,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(bottom = 16.dp)
+                    modifier = Modifier.padding(bottom = 13.dp)
                 )
                 Text(
-                    text = "RMSE : $RMSE min\nMAE : $MAE min",
-                    fontSize = 18.sp,
+                    text = "Métriques régression :\nRMSE : $RMSE min\nMAE : $MAE min",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Text(
+                    text = "Métriques classification :\nPrécision : 97%\nRecall : 97%\nF1-score : 97%",
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(bottom = 16.dp)
@@ -270,8 +265,6 @@ fun PredictionScreen(
     }
 }
 
-
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InfoScreen(navController: NavHostController) {
@@ -319,6 +312,21 @@ fun InfoScreen(navController: NavHostController) {
                         "- Un MAE de $MAE minutes signifie qu’en moyenne le modèle se trompe de ±$MAE minutes.\n" +
                         "- Un RMSE ($RMSE minutes) plus élevé que le MAE indique qu’il existe quelques prédictions avec de grandes erreurs."
             )
+            // ... dans InfoScreen, après explication des métriques régression :
+
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Interprétation des métriques de classification",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(8.dp))
+            Text("• Précision : proportion des prédictions correctes parmi toutes les prédictions positives.")
+            Spacer(Modifier.height(8.dp))
+            Text("• Recall (Rappel) : proportion des vrais haricots bien détectés parmi toutes les images de haricots.")
+            Spacer(Modifier.height(8.dp))
+            Text("• F1-score : moyenne harmonique entre précision et rappel, utile en cas de déséquilibre entre classes.")
+
         }
     }
 }
